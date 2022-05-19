@@ -11,15 +11,25 @@ import matplotlib.pyplot as plt
 from statistics import mean
 from sklearn.model_selection import GridSearchCV
 import seaborn as sns
-data = pd.read_csv('./train-data.csv',index_col="CarId")
-data.info()
-categories_cols = data.select_dtypes(include=['object']).columns
+data = pd.read_csv('./train-data.csv')
 
-#==================Xem phần trăm missing data trong mỗi cột ===========================
+#==================Xem % missing data trong mỗi cột ===========================
 for col in data.columns:
     missing_data=data[col].isna().sum()
     missing_persent=missing_data/len(data)*100
     print(f"Column: {col} has {missing_persent}%")
+
+#==================Loại bỏ các cột không cần thiết=============================
+data = data.drop(columns=["CarId","Name","New_Price"])
+data.info()
+categories_cols = data.select_dtypes(include=['object']).columns
+
+#================== Ép kiểu dữ liệu ===============================
+data['Engine']=data["Engine"].str.replace(' CC','')
+data['Power']=data["Power"].str.replace(' bhp','')
+data.head()
+data['Engine']=data["Engine"].astype(np.float).astype("float64")
+data['Power']=data['Power'].astype(np.float).astype("float64")
 #==============================Tách dữ liệu ra thành tập train và tập test========================
 x, y = train_test_split(data, test_size=0.2, random_state=42)
 y_train=x["Price"].copy()
@@ -72,6 +82,14 @@ plt.show()
 plt.figure(figsize=(5,5))
 sns.distplot(data["Price"],kde=True)
 plt.show()
+#==================================Fuel_Type===================================
+plt.figure(figsize=(7,7))
+data['Fuel_Type'].value_counts().plot(kind='bar')
+plt.show()
+#==================================Owner_Type===================================
+plt.figure(figsize=(7,7))
+data['Owner_Type'].value_counts().plot(kind='bar')
+plt.show()
 #=================================Draw=====================================
 for i in categories_cols:
     if i!='Name':
@@ -82,6 +100,25 @@ year,price = data["Year"],data["Price"]
 plt.scatter(year,price)
 plt.xlabel('Year')
 plt.ylabel('Price')
+plt.show()
+#================================Nguyen====================================
+# sns.set_theme()
+sns.histplot(data=data["Price"])
+plt.show()
+
+sns.barplot(data=data,x="Owner_Type",y="Price")
+plt.xticks(rotation='vertical')
+plt.show()
+
+sns.barplot(data=data,x="Transmission",y="Price")
+plt.xticks(rotation='vertical')
+plt.show()
+
+sns.barplot(data=data,x="Fuel_Type",y="Price")
+plt.xticks(rotation='vertical')
+plt.show()
+
+sns.barplot(data=data,x="Price",y="Location")
 plt.show()
 #===============================DecisionTreeRegressor===============================
 from sklearn.tree import DecisionTreeRegressor
