@@ -1,7 +1,9 @@
+#%%
 import pandas as pd
 import numpy as np
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import RandomizedSearchCV, train_test_split
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -13,6 +15,7 @@ from sklearn.model_selection import GridSearchCV
 import seaborn as sns
 data = pd.read_csv('./train-data.csv')
 
+#%%
 #==================Xem % missing data trong mỗi cột ===========================
 for col in data.columns:
     missing_data=data[col].isna().sum()
@@ -30,7 +33,8 @@ data['Power']=data["Power"].str.replace(' bhp','')
 data.head()
 data['Engine']=data["Engine"].astype(np.float).astype("float64")
 data['Power']=data['Power'].astype(np.float).astype("float64")
-#==============================Tách dữ liệu ra thành tập train và tập test========================
+data.info()
+#================== Tách dữ liệu ra thành tập train và tập test========================
 x, y = train_test_split(data, test_size=0.2, random_state=42)
 y_train=x["Price"].copy()
 x_train = x.drop(columns = "Price")
@@ -46,12 +50,14 @@ class ColumnSelector(BaseEstimator, TransformerMixin):
     def transform(self, dataframe):
         return dataframe[self.feature_names].values  
 
-#====================Liệt kê các Numerical Features 
+#====================Liệt kê các Numerical Features ======================================
 features_numbers = list(data.select_dtypes(include=[np.number]))
+features_numbers = features_numbers[:4]
+features_numbers
 #====================Liệt kê các Categorical Features
 features_cat = list(data.select_dtypes(exclude=[np.number]))
-features_numbers = features_numbers[:3]
-
+features_cat
+#====================Xử lý Missing data và StandardScaler======================================
 cat_pipeline = Pipeline([
     ('selector', ColumnSelector(features_cat)),
     ('imputer', SimpleImputer(missing_values=np.nan, strategy="constant", fill_value = "NO INFO", copy=True)),
@@ -69,7 +75,7 @@ full_pipeline = FeatureUnion(transformer_list=[
 
 processed_train_set_val = full_pipeline.fit_transform(x_train)  # x_train
 processed_test_set_val = full_pipeline.transform(x_valid)     # x_test
-
+#%%
 print('\n____________ Processed feature values ____________')
 print(processed_train_set_val[[0, 1, 2],:].toarray())
 print(processed_train_set_val.shape)
@@ -120,44 +126,19 @@ plt.show()
 
 sns.barplot(data=data,x="Price",y="Location")
 plt.show()
-#===============================DecisionTreeRegressor===============================
-from sklearn.tree import DecisionTreeRegressor
-dt_model=DecisionTreeRegressor(random_state=1)
-dt_model.fit(processed_train_set_val[0:9],y_train[0:9])
-dt_model.get_params()
-print("\nPredictions: ", dt_model.predict(processed_test_set_val[0:9]))
-print("Labels:      ", list(y_valid[0:9]))
-
+#%%
+#=============================K-fold cross validation=============================================================================
+print('\n____________ K-fold cross validation ____________')
+cv = KFold(n_splits=5,shuffle=True,random_state=37)
+#===============================Tính Score và RMSE================================================================================
 def r2score_and_rmse(model, train_data, labels): 
     r2score = model.score(train_data, labels)
     from sklearn.metrics import mean_squared_error
     prediction = model.predict(train_data)
     mse = mean_squared_error(labels, prediction)
     rmse = np.sqrt(mse)
-    return r2score, rmse      
-accuracy_train_p, rmse_train = r2score_and_rmse(dt_model, processed_train_set_val, y_train)
-print("Độ chính xác trên tập huấn luyện :",accuracy_train_p)
-print("RMSE :",rmse_train)
-accuracy_test_p, rmse_test = r2score_and_rmse(dt_model, processed_test_set_val, y_valid)
-print("Độ chính xác trên tập test :",accuracy_test_p)
-print("RMSE :",rmse_test)
-
-print('\n____________ K-fold cross validation ____________')
-cv = KFold(n_splits=5,shuffle=True,random_state=37)
-dt_model=DecisionTreeRegressor(random_state=1)
-#Train
-nmse_scores_train = cross_val_score(dt_model, processed_train_set_val, y_train, cv=cv, scoring='neg_mean_squared_error')
-rmse_scores_train = np.sqrt(-nmse_scores_train)
-print("DecisionTreeRegressor rmse: ", rmse_scores_train.round(decimals=1))
-print("Avg. rmse: ", mean(rmse_scores_train.round(decimals=1)),'\n')
-
-#Test
-nmse_scores_test = cross_val_score(dt_model, processed_test_set_val, y_valid, cv=cv, scoring='neg_mean_squared_error')
-rmse_scores_test = np.sqrt(-nmse_scores_test)
-print("DecisionTreeRegressor rmse: ", rmse_scores_test.round(decimals=1))
-print("Avg. rmse: ", mean(rmse_scores_test.round(decimals=1)),'\n')
-
-model_name = "DecisionTreeRegressor"
+    return r2score, rmse
+#==================================Fine-tune models================================================================================
 print('\n____________ Fine-tune models ____________')
 def print_search_result(grid_search, model_name = ""): 
     print("\n====== Fine-tune " + model_name +" ======")
@@ -169,17 +150,107 @@ def print_search_result(grid_search, model_name = ""):
     for (mean_score, params) in zip(cv_results["mean_test_score"], cv_results["params"]):
         print('rmse =', np.sqrt(-mean_score).round(decimals=1), params)   
 
-# param_grid = {
-#             "max_depth" : np.arange(10,100) }
-param_grid={'max_depth': [5],
- 'max_features': 'auto',
- 'max_leaf_nodes': [40],
- 'min_samples_leaf': [2],
- 'min_weight_fraction_leaf': [0.1],
- 'splitter': ['random']}
-cv = KFold(n_splits=2,shuffle=True,random_state=37)          
-grid_search = GridSearchCV(dt_model,param_grid=param_grid,scoring='neg_mean_squared_error',cv=3,verbose=3)
-grid_search.fit(processed_train_set_val[0:9], y_train[0:9])
-print_search_result(grid_search,model_name)
-print('Best hyperparameter combination: ',grid_search.best_params_)
-print('Best rmse: ', np.sqrt(-grid_search.best_score_)) 
+#%%
+#===============================Train GradientBoostingRegressor===========================
+print("\n____________ Train GradientBoostingRegressor ____________")
+grabt_model = GradientBoostingRegressor(random_state = 42)
+grabt_model.fit(processed_train_set_val,y_train)
+print("\nPredictions: ", grabt_model.predict(processed_test_set_val[0:9]))
+print("Labels:      ", list(y_valid[0:9]))
+#===============================Tính Score và RMSE trên GradientBoostingRegressor======================
+#%%
+print("\n____________ Tính Score và RMSE trên GradientBoostingRegressor ____________")
+accuracy_train_p, rmse_train = r2score_and_rmse(grabt_model, processed_train_set_val, y_train)
+print("Độ chính xác trên tập huấn luyện :",accuracy_train_p)
+print("RMSE :",rmse_train)
+accuracy_test_p, rmse_test = r2score_and_rmse(grabt_model, processed_test_set_val, y_valid)
+print("Độ chính xác trên tập test :",accuracy_test_p)
+print("RMSE :",rmse_test)
+#=============================K-fold cross validion trên GradientBoostingRegressor======================
+#%%
+print("\n____________ K-fold cross validion trên GradientBoostingRegressor trên tập Train ____________")
+#Train
+nmse_scores_train = cross_val_score(grabt_model, processed_train_set_val, y_train, cv=cv, scoring='neg_mean_squared_error')
+rmse_scores_train = np.sqrt(-nmse_scores_train)
+print("DecisionTreeRegressor rmse: ", rmse_scores_train.round(decimals=1))
+print("Avg. rmse: ", mean(rmse_scores_train.round(decimals=1)),'\n')
+#%%
+#Test
+print("\n____________ K-fold cross validion trên GradientBoostingRegressor trên tập Test ____________")
+nmse_scores_test = cross_val_score(grabt_model, processed_test_set_val, y_valid, cv=cv, scoring='neg_mean_squared_error')
+rmse_scores_test = np.sqrt(-nmse_scores_test)
+print("DecisionTreeRegressor rmse: ", rmse_scores_test.round(decimals=1))
+print("Avg. rmse: ", mean(rmse_scores_test.round(decimals=1)),'\n')
+
+#==============================Fine-tune models GradientBoostingRegressor=======================
+#%%
+print("\n____________ Fine-tune models GradientBoostingRegressor ____________")
+print("\n____________ RandomizedSearchCV ____________")
+loss = ['ls','lad','huber']
+n_estimators = [100,500, 900, 1100,1500]
+max_depth = [2,3,5,10,15]
+min_samples_leaf = [1,2,4,6,8]
+min_samples_split = [2, 4, 6, 10]
+max_features = ['auto', 'sqrt', 'log2', None]
+hyperparameter_grid = {
+                       'n_estimators': n_estimators,
+                       'max_depth': max_depth,
+                       'min_samples_leaf': min_samples_leaf,
+                       'min_samples_split': min_samples_split,
+                       'max_features': max_features}
+random_cv = RandomizedSearchCV(estimator=grabt_model,
+                               param_distributions=hyperparameter_grid,
+                               cv=4, n_iter=25, 
+                               scoring = 'neg_mean_absolute_error',
+                               n_jobs = -1, verbose = 1, 
+                               return_train_score = True,
+                               random_state=42)
+random_cv.fit(processed_train_set_val, y_train)
+random_results = pd.DataFrame(random_cv.cv_results_).sort_values('mean_test_score', ascending = False)
+random_results.head(10)
+random_cv.best_estimator_
+#%%
+print("\n____________ GradientBoostingRegressor ____________")
+grabt_model = GradientBoostingRegressor(max_depth = 5,
+                                  min_samples_split = 10,
+                                  max_features = None,
+                                  random_state = 42)
+#%%
+print("\n____________ GridSearchCV ____________")
+trees_grid = {'n_estimators': [100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800]}
+grid_search = GridSearchCV(estimator = grabt_model, 
+                           param_grid=trees_grid, 
+                           cv = 4, 
+                           scoring = 'neg_mean_absolute_error', 
+                           verbose = 1,
+                           n_jobs = -1, 
+                           return_train_score = True)
+grid_search.fit(processed_train_set_val, y_train)
+results = pd.DataFrame(grid_search.cv_results_)
+plt.figure(figsize=(5,5))
+plt.style.use('fivethirtyeight')
+plt.plot(results['param_n_estimators'], -1 * results['mean_test_score'], label = 'Testing Error')
+plt.plot(results['param_n_estimators'], -1 * results['mean_train_score'], label = 'Training Error')
+plt.xlabel('Number of Trees'); plt.ylabel('Mean Abosolute Error'); plt.legend();
+plt.title('Performance vs Number of Trees');
+results.sort_values('mean_test_score', ascending = False).head(5)
+# %%
+#==============================Final Model=======================
+def mae(y_true, y_pred):
+    return np.mean(abs(y_true - y_pred))
+print("\n____________ Final Model GradientBoostingRegressor ____________")
+default_model_grabt = GradientBoostingRegressor(random_state = 42)
+final_model_grabt = grid_search.best_estimator_
+default_model_grabt.fit(processed_train_set_val, y_train)
+final_model_grabt.fit(processed_train_set_val, y_train)
+default_pred = default_model_grabt.predict(processed_test_set_val)
+final_pred = final_model_grabt.predict(processed_test_set_val)
+print('Default model performance on the test set: MAE = %0.4f.' % mae(y_valid, default_pred))
+print('Final model performance on the test set:   MAE = %0.4f.' % mae(y_valid, final_pred))
+
+sns.kdeplot(final_pred, label = 'Predictions')
+sns.kdeplot(y_valid, label = 'Values')
+plt.xlabel('Energy Star Score'); 
+plt.ylabel('Density')
+plt.title('Test Values and Predictions')
+# %%
