@@ -2,6 +2,7 @@
 import joblib
 import pandas as pd
 import numpy as np
+from sklearn import tree
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import RandomizedSearchCV, train_test_split
@@ -15,7 +16,6 @@ from statistics import mean
 from sklearn.model_selection import GridSearchCV
 import seaborn as sns
 data = pd.read_csv('./train-data.csv')
-
 #%%
 #==================Xem % missing data trong mỗi cột ===========================
 for col in data.columns:
@@ -176,7 +176,7 @@ print("Avg. rmse: ", mean(rmse_scores_train_kfoldgrd.round(decimals=1)),'\n')
 print("\n____________ K-fold cross validion trên GradientBoostingRegressor trên tập Test ____________")
 nmse_scores_test = cross_val_score(grabt_model, processed_test_set_val, y_valid, cv=cv, scoring='neg_mean_squared_error')
 rmse_scores_test = np.sqrt(-nmse_scores_test)
-print("DecisionTreeRegressor rmse: ", rmse_scores_test.round(decimals=1))
+print("GradientBoostingRegressor rmse: ", rmse_scores_test.round(decimals=1))
 print("Avg. rmse: ", mean(rmse_scores_test.round(decimals=1)),'\n')
 
 #==============================Fine-tune models GradientBoostingRegressor=======================
@@ -240,7 +240,7 @@ plt.xlabel('Number of Trees'); plt.ylabel('Mean Abosolute Error'); plt.legend()
 plt.title('Performance vs Number of Trees')
 results.sort_values('mean_test_score', ascending = False).head(5)
 # %%
-#==============================Final Model=======================
+#==============================Final Model GradientBoostingRegressor=======================
 def mae(y_true, y_pred):
     return np.mean(abs(y_true - y_pred))
 print("\n____________ Final Model GradientBoostingRegressor ____________")
@@ -260,9 +260,9 @@ print(default_model_grabt.score(processed_test_set_val,y_valid))
 print(list(y_valid[0:9]))
 print('Default model performance on the test set: MAE = %0.4f.' % mae(y_valid, default_pred))
 print('Final model performance on the test set:   MAE = %0.4f.' % mae(y_valid, final_pred))
-# accuracy_train_grabt_t, rmse_train_grabt_t = r2score_and_rmse(default_model_grabt, processed_test_set_val, y_valid)
-# print("GradientBoostingRegressor Default rmse: ", accuracy_train_grabt_t.round(decimals=1))
-# print("Avg. rmse: ", mean( rmse_train_grabt_t.round(decimals=1)),'\n')
+accuracy_train_grabt_t, rmse_train_grabt_t = r2score_and_rmse(final_model_grabt, processed_train_set_val, y_train)
+print("GradientBoostingRegressor Default rmse: ", accuracy_train_grabt_t.round(decimals=1))
+print("Avg. rmse: ", mean( rmse_train_grabt_t.round(decimals=1)),'\n')
 
 # accuracy_test_grabt_f, rmse_test_grabt_f = r2score_and_rmse(final_model_grabt,processed_test_set_val, y_valid)
 # print("GradientBoostingRegressor Final rmse: ", accuracy_test_grabt_f.round(decimals=1))
@@ -288,7 +288,7 @@ model_random.fit(processed_train_set_val, y_train)
 print('\n____________ RandomForestRegressor ____________')
 r2score_model_random, rmse_model_random = r2score_and_rmse(model_random, processed_train_set_val, y_train)
 print('\nR2 score (on training data, best=1):',r2score_model_random)
-print("Root Mean Square Error: ", rmse_model_random.round(decimals=1))     
+print("RMSE trên tập train: ", rmse_model_random.round(decimals=1))     
 # Predict labels for some training instances
 #print("Input data: \n", train_set.iloc[0:9])
 print("\nPredictions: ", model_random.predict(processed_train_set_val[0:9]).round(decimals=1))
@@ -319,14 +319,17 @@ grid_search = GridSearchCV(model_random, param_grid, cv=cv, scoring='neg_mean_sq
 refit=True) # refit=True: after finding best hyperparam, it fit() the model with whole data (hope to get better result)
 grid_search.fit(processed_train_set_val, y_train)
 print_search_result(grid_search, model_name = "RandomForestRegressor")   
-
 #%%
-print("\n____________ K-fold cross validion trên GradientBoostingRegressor trên tập Train ____________")
-#Train
-nmse_scores_train_kfoldgrd = cross_val_score(grabt_model, processed_train_set_val, y_train, cv=cv, scoring='neg_mean_squared_error')
-rmse_scores_train_kfoldgrd = np.sqrt(-nmse_scores_train_kfoldgrd)
-print("GradientBoostingRegressor rmse: ", rmse_scores_train_kfoldgrd.round(decimals=1))
-print("Avg. rmse: ", mean(rmse_scores_train_kfoldgrd.round(decimals=1)),'\n')
+#==============================Final Model GradientBoostingRegressor=======================
+final_model_random = grid_search.best_estimator_
+final_model_random.fit(processed_train_set_val,y_train)
+final_pred_random = final_model_random.predict(processed_test_set_val)
+print(final_pred_random[0:9])
+print(list(y_valid[0:9]))
+
+accuracy_train_final_random, rmse_train_final_random = r2score_and_rmse(final_model_random, processed_train_set_val, y_train)
+print("Score: ", accuracy_train_final_random.round(decimals=1))
+print("RMSE",rmse_train_final_random,'\n')
 # %%
 #==============================Feature Importances=======================
 best_model = grid_search.best_estimator_
@@ -343,6 +346,7 @@ for importance,name in sorted(zip(feature_importances,feature_names),reverse=Tru
     print((importance,name))
 feature_results = pd.DataFrame({'feature': feature_names_new, 
                                 'importance':  values_importance})
+feature_results = feature_results.sort_values('importance', ascending = False).reset_index(drop=True)
 plt.figure(figsize=(5,5))
 feature_results.loc[:9, :].plot(x = 'feature', y = 'importance', 
                                  edgecolor = 'k',
@@ -362,7 +366,7 @@ model_comparison.sort_values('RMSE',ascending = False).plot(x = 'model',
                                                            edgecolor = 'black')
 plt.ylabel('')
 plt.yticks(size = 14)
-plt.xlabel('Mean Absolute Error')
+plt.xlabel('RMSE before K-Fold')
 plt.xticks(size = 14)
 plt.title('RMSE', size = 20)
 plt.show()
@@ -379,8 +383,34 @@ model_comparison.sort_values('RMSE',ascending = False).plot(x = 'model',
                                                            edgecolor = 'black')
 plt.ylabel('')
 plt.yticks(size = 14)
-plt.xlabel('Mean Absolute Error')
+plt.xlabel('RMSE after K-Fold')
 plt.xticks(size = 14)
 plt.title('RMSE', size = 20)
 plt.show()
+# %%
+most_important_features = feature_results['feature'][:5]
+single_tree = final_model_grabt.estimators_[105][0]
+processed_train_set_val_most_importance = x_train[most_important_features]
+processed_train_set_val_most_importance.isna().sum()
+processed_train_set_val_most_importance.fillna(0,inplace=True)
+num_pipeline = Pipeline([
+    ('selector', ColumnSelector(processed_train_set_val_most_importance)),
+    ('imputer', SimpleImputer(missing_values=np.nan, strategy="median", copy=True)),
+    ('std_scaler', StandardScaler(with_mean=True, with_std=True, copy=True))])   
+
+full_pipeline = FeatureUnion(transformer_list=[
+    ("num_pipeline", num_pipeline)])
+ok = full_pipeline.fit_transform(processed_train_set_val_most_importance)
+processed_train_set_val_most_importance.shape
+final_model_grabt.fit(processed_train_set_val_most_importance,y_train)
+tree.export_graphviz(single_tree, 
+                     out_file = './images/tree.dot',
+                     rounded = True, 
+                     feature_names = most_important_features,
+                     filled = True)
+nmse_scores_test = cross_val_score(final_model_grabt, processed_train_set_val, y_train, cv=cv, scoring='neg_mean_squared_error')
+rmse_scores_test = np.sqrt(-nmse_scores_test)
+print("GradientBoostingRegressor rmse: ", rmse_scores_test.round(decimals=1))
+print("Avg. rmse: ", mean(rmse_scores_test.round(decimals=1)),'\n')
+
 # %%
