@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 from statistics import mean
 from sklearn.model_selection import GridSearchCV
 import seaborn as sns
+from sklearn.preprocessing import PolynomialFeatures
+
 data = pd.read_csv('./train-data.csv')
 data.describe()
 data.info()
@@ -64,6 +66,7 @@ def missing_values_table(df):
               " columns bị missing values.")
         return mis_val_table_ren_columns
 missing_values_table(data)
+#%%
 #==================Loại bỏ các cột không cần thiết=============================
 data = data.drop(columns=["CarId","Name","New_Price"])
 data.info()
@@ -196,9 +199,9 @@ print("Labels:      ", list(y_valid[0:9]))
 #===============================Tính Score và RMSE trên GradientBoostingRegressor======================
 #%%
 print("\n____________ Tính Score và RMSE trên GradientBoostingRegressor ____________")
-accuracy_train_grabt, rmse_train_grabt = r2score_and_rmse(grabt_model, processed_train_set_val, y_train)
+accuracy_train_grabt, rmse_grabt = r2score_and_rmse(grabt_model, processed_train_set_val, y_train)
 print("Độ chính xác trên tập huấn luyện :",accuracy_train_grabt)
-print("RMSE :",rmse_train_grabt)
+print("RMSE :",rmse_grabt)
 accuracy_test_p, rmse_test = r2score_and_rmse(grabt_model, processed_test_set_val, y_valid)
 print("Độ chính xác trên tập test :",accuracy_test_p)
 print("RMSE :",rmse_test)
@@ -210,14 +213,6 @@ nmse_scores_train_kfoldgrd = cross_val_score(grabt_model, processed_train_set_va
 rmse_scores_train_kfoldgrd = np.sqrt(-nmse_scores_train_kfoldgrd)
 print("GradientBoostingRegressor rmse: ", rmse_scores_train_kfoldgrd.round(decimals=1))
 print("Avg. rmse: ", mean(rmse_scores_train_kfoldgrd.round(decimals=1)),'\n')
-#%%
-#Test
-print("\n____________ K-fold cross validion trên GradientBoostingRegressor trên tập Test ____________")
-nmse_scores_test = cross_val_score(grabt_model, processed_test_set_val, y_valid, cv=cv, scoring='neg_mean_squared_error')
-rmse_scores_test = np.sqrt(-nmse_scores_test)
-print("GradientBoostingRegressor rmse: ", rmse_scores_test.round(decimals=1))
-print("Avg. rmse: ", mean(rmse_scores_test.round(decimals=1)),'\n')
-
 #==============================Fine-tune models GradientBoostingRegressor=======================
 #%%
 print("\n____________ Fine-tune models GradientBoostingRegressor ____________")
@@ -259,7 +254,7 @@ grabt_model = GradientBoostingRegressor(max_depth = 5,
                                   random_state = 42)
 print("\n____________ GridSearchCV ____________")
 def fine_turn_gradient():
-    kt=True
+    kt=False
     if kt:
         trees_grid = {'n_estimators': [100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800]}
         grid_search_gradient_model = GridSearchCV(estimator = grabt_model, 
@@ -294,14 +289,9 @@ final_model_grabt.fit(processed_train_set_val, y_train)
 final_pred = final_model_grabt.predict(processed_test_set_val)
 print(final_pred[0:9])
 print(final_model_grabt.score(processed_test_set_val,y_valid))
-accuracy_train_grabt_t, rmse_train_grabt_t = r2score_and_rmse(final_model_grabt, processed_train_set_val, y_train)
+accuracy_train_grabt_t, rmse_grabt_final = r2score_and_rmse(final_model_grabt, processed_train_set_val, y_train)
 print("Score: ", accuracy_train_grabt_t.round(decimals=1))
-print("RMSE",rmse_train_grabt_t)
-
-# accuracy_test_grabt_f, rmse_test_grabt_f = r2score_and_rmse(final_model_grabt,processed_test_set_val, y_valid)
-# print("GradientBoostingRegressor Final rmse: ", accuracy_test_grabt_f.round(decimals=1))
-# print("Avg. rmse: ", mean(rmse_test_grabt_f),'\n')
-
+print("RMSE",rmse_grabt_final)
 sns.kdeplot(final_pred, label = 'Predictions')
 sns.kdeplot(y_valid, label = 'Values')
 plt.xlabel('Energy Star Score'); 
@@ -338,7 +328,7 @@ print("Avg. rmse: ", mean(rmse_scores_train_kfoldrandom.round(decimals=1)),'\n')
 from sklearn.model_selection import GridSearchCV
 cv = KFold(n_splits=5,shuffle=True,random_state=37) # cv data generator
 def fine_turn_random():
-    kt=True
+    kt=False
     if kt:
         model_random = RandomForestRegressor()
         param_grid = [
@@ -361,9 +351,9 @@ final_model_random.fit(processed_train_set_val,y_train)
 final_pred_random = final_model_random.predict(processed_test_set_val)
 print(final_pred_random[0:9])
 print(list(y_valid[0:9]))
-accuracy_train_final_random, rmse_train_final_random = r2score_and_rmse(final_model_random, processed_train_set_val, y_train)
+accuracy_train_final_random, rmse_final_random = r2score_and_rmse(final_model_random, processed_train_set_val, y_train)
 print("Score: ", accuracy_train_final_random.round(decimals=1))
-print("RMSE",rmse_train_final_random,'\n')
+print("RMSE",rmse_final_random,'\n')
 # %%
 #==============================Feature Importances=======================
 best_model = grid_search_random_model.best_estimator_
@@ -388,63 +378,203 @@ feature_results.loc[:9, :].plot(x = 'feature', y = 'importance',
 plt.xlabel('Relative Importance', size = 20)
 plt.ylabel('')
 plt.title('Feature Importances from Random Forest', size = 30)
-    # Print features and importance score  (ONLY on rand forest)
-    
-# %%
-model_comparison = pd.DataFrame({'model':['Gradient Boosted','RandomForestRegressor'],
-                                'RMSE':[rmse_train_grabt,rmse_model_random]})
-model_comparison.sort_values('RMSE',ascending = False).plot(x = 'model',
-                                                           y = 'RMSE',
-                                                           kind = 'barh',
-                                                           color = 'red', 
-                                                           edgecolor = 'black')
-plt.ylabel('')
-plt.yticks(size = 14)
-plt.xlabel('RMSE before K-Fold')
-plt.xticks(size = 14)
-plt.title('RMSE', size = 20)
-plt.show()
+
 
 #%%
+#==============================Poly regression=======================
+def store_model(model, model_name = ""):
+    # NOTE: sklearn.joblib faster than pickle of Python
+    # INFO: can store only ONE object in a file
+    if model_name == "": 
+        model_name = type(model).__name__
+        #lưu chỉ cần joblib.dump
+    joblib.dump(model,'models/' + model_name + '_model.pkl')
+def load_model(model_name):
+    # Load objects into memory
+    #del model
+    model = joblib.load('models/' + model_name + '_model.pkl')
+    #print(model)
+    return model
+
+
+#%% LinearRegression
+#=============================== Train LinearRegression ===========================
+from sklearn.linear_model import LinearRegression
+lr_model = LinearRegression()
+lr_model.fit(processed_train_set_val,y_train)
+print('\n____________ LinearRegression ____________')
+#model.coef_ in ra tham số của model
+# print('Learned parameters: ', lr_model.coef_)
+print("\nInput data: \n", x.iloc[0:9])
+#=============================== Dự đoán trên tập train ===========================
+print("\n____________ Dự đoán trên tập huấn luyện ____________")
+print("\nPredictions : ",lr_model.predict(processed_train_set_val[0:9]))
+#in ra cái label thực
+print("Labels: ", list(y_train[0:9]))
+
+#%%
+#===============================Tính Score và RMSE trên LinearRegression ======================
+print("\n____________ Tính Score và RMSE trên LinearRegression ____________")
+accuracy_train_p, rmse_train = r2score_and_rmse(lr_model, processed_train_set_val, y_train)
+print("Độ chính xác trên tập huấn luyện :",accuracy_train_p)
+print("RMSE :",rmse_train)
+
+
+# %% KFold LinearRegression
+run_evaluation = True
+if run_evaluation:
+    cv = KFold(n_splits=5,shuffle=True,random_state=37)
+    model_name = "LinearRegression" 
+    model = LinearRegression()   
+    print("\n____________ K-fold cross validion LinearRegression trên tập Train ____________")          
+    nmse_scores_kfoldpoly = cross_val_score(model, processed_train_set_val, y_train, cv=cv, scoring='neg_mean_squared_error')
+    rmse_scores_kfoldpoly = np.sqrt(-nmse_scores_kfoldpoly)
+    joblib.dump(rmse_scores_kfoldpoly,'models/' + model_name + '_rmseTrain.pkl')
+    print("LinearRegression rmse: ", rmse_scores_kfoldpoly.round(decimals=1))
+    print("Avg. rmse: ", mean(rmse_scores_kfoldpoly.round(decimals=1)),'\n')
+
+else:
+    model_name = "LinearRegression" 
+    rmse_scores = joblib.load('models/' + model_name + '_rmse.pkl')
+    print("\nLinearRegression rmse: ", rmse_scores.round(decimals=1))
+    print("Avg. rmse: ", mean(rmse_scores.round(decimals=1)),'\n')
+
+# %%  train model Polinomial regression model
+#Bậc càng cao mô tả đúng dữ liệu.Bậc cao thì chạy lâu
+poly_feat_adder = PolynomialFeatures(degree = 2)
+#fit_transform biến đổi dữ liệu
+train_set_poly_added = poly_feat_adder.fit_transform(processed_train_set_val)
+new_training = True
+if new_training:
+    model = LinearRegression()
+    model.fit(train_set_poly_added, y_train)
+    store_model(model, model_name = "PolinomialRegression")      
+else:
+    model = load_model("PolinomialRegression")
+print('\n____________ Polinomial regression ____________')
+print("\n____________ Dự đoán trên tập huấn luyện ____________")
+print("\nPredictions: ", model.predict(train_set_poly_added[0:9]).round(decimals=1))
+print("Labels:      ", list(y_train[0:9]))
+
+#%%
+print("\n____________ Tính Score và RMSE trên PolinomialRegression ____________")
+accuracy_train_p, rmse_poly = r2score_and_rmse(model, train_set_poly_added, y_train)
+print("Độ chính xác trên tập huấn luyện :",accuracy_train_p)
+print("RMSE :",rmse_poly)
+
+#%% KFold Polinomial regression
+print('\n____________ K-fold cross validation Polinomial regression ____________')
+run_evaluation = True
+if run_evaluation:
+   print("\n____________ K-fold cross validion PolinomialRegression  trên tập Train ____________")    
+   model_name = "PolinomialRegression" 
+   model = LinearRegression()
+   nmse_scores = cross_val_score(model, train_set_poly_added, y_train, cv=cv, scoring='neg_mean_squared_error')
+   rmse_scores = np.sqrt(-nmse_scores)
+   joblib.dump(rmse_scores,'models/' + model_name + '_rmseTrain.pkl')
+   print("Polinomial regression rmse: ", rmse_scores.round(decimals=1))
+   print("Avg. rmse: ", mean(rmse_scores.round(decimals=1)),'\n')
+else:
+   model_name = "PolinomialRegression" 
+   rmse_scores = joblib.load('models/' + model_name + '_rmse.pkl')
+   print("Polinomial regression rmse: ", rmse_scores.round(decimals=1))
+   print("Avg. rmse: ", mean(rmse_scores.round(decimals=1)),'\n')
+
+#%%Fine-tune là tìm những hyperparameter
+#train model bậc 1 sai số bn bậc 2 sai số bn cái nào tốt nhất mình chọn
+#Làm tuning là chọn những model tốt nhất.LinearRegression ko có hyperparameter vì là bậc 1
+
+print('\n____________ Fine-tune models ____________')
+def fine_tune_poly(): 
+    cv = KFold(n_splits=5,shuffle=True,random_state=37) 
+    run_new_search =True   
+    if run_new_search:                   
+        model = Pipeline([ ('poly_feat_adder', PolynomialFeatures()),
+                           ('lin_reg', LinearRegression()) ]) 
+        param_grid = [
+            {'poly_feat_adder__degree': [1, 2]} ]
+        grid_search_poly = GridSearchCV(model, param_grid, cv=cv, scoring='neg_mean_squared_error', return_train_score=True)
+        grid_search_poly.fit(processed_train_set_val, y_train)
+        joblib.dump(grid_search_poly,'models/PolinomialRegression_gridsearch.pkl') 
+    else:         
+        grid_search_poly = joblib.load('models/PolinomialRegression_gridsearch.pkl')
+    return grid_search_poly
+#%% 
+# Final_model
+new_training = True
+grid_search_poly_model = fine_tune_poly()
+if new_training:
+    final_model = grid_search_poly_model.best_estimator_
+    final_model.fit(train_set_poly_added,y_train)
+    store_model(final_model, model_name = "Final_model")      
+else:
+    final_model = load_model("Final_model")
+
+print('\n____________ Final-model PolinomialRegression  ____________')
+print("\nPredictions: ", final_model.predict(train_set_poly_added[0:9]))
+print("Labels:      ", list(y_train[0:9]))
+print("\n____________ Tính Score và RMSE trên PolinomialRegression ____________")
+accuracy_train_p, rmse_poly_final = r2score_and_rmse(final_model, train_set_poly_added, y_train)
+print("Độ chính xác trên tập huấn luyện :",accuracy_train_p)
+print("RMSE :",rmse_poly_final)
+# %%
+def compare_rmse(value1,value2,value3,title):
+    model_comparison = pd.DataFrame({'model':['Gradient Boosted','RandomForestRegressor','PolinomialRegression'],
+                                    'RMSE':[value1,value2,value3]})
+    model_comparison.sort_values('RMSE',ascending = False).plot(x = 'model',
+                                                            y = 'RMSE',
+                                                            kind = 'barh',
+                                                            color = 'red', 
+                                                            edgecolor = 'black')
+    plt.ylabel('')
+    plt.yticks(size = 14)
+    plt.xlabel(title)
+    plt.xticks(size = 14)
+    plt.title('RMSE', size = 20)
+    plt.show()
+#%%
+# Trước khi KFold
+compare_rmse(rmse_grabt,rmse_model_random,rmse_poly,"Trước khi KFold")
 avg_rmse_kfoldgrd=mean(rmse_scores_train_kfoldgrd.round(decimals=1))
 avg_rmse_kfoldrandom=mean(rmse_scores_train_kfoldrandom.round(decimals=1))
-model_comparison = pd.DataFrame({'model':['Gradient Boosted','RandomForestRegressor'],
-                                'RMSE':[avg_rmse_kfoldgrd,avg_rmse_kfoldrandom]})
-model_comparison.sort_values('RMSE',ascending = False).plot(x = 'model',
-                                                           y = 'RMSE',
-                                                           kind = 'barh',
-                                                           color = 'red', 
-                                                           edgecolor = 'black')
-plt.ylabel('')
-plt.yticks(size = 14)
-plt.xlabel('RMSE after K-Fold')
-plt.xticks(size = 14)
-plt.title('RMSE', size = 20)
-plt.show()
-# %%
-most_important_features = feature_results['feature'][:5]
-single_tree = final_model_grabt.estimators_[105][0]
-processed_train_set_val_most_importance = x_train[most_important_features]
-processed_train_set_val_most_importance.isna().sum()
-processed_train_set_val_most_importance.fillna(0,inplace=True)
-num_pipeline = Pipeline([
-    ('selector', ColumnSelector(processed_train_set_val_most_importance)),
-    ('imputer', SimpleImputer(missing_values=np.nan, strategy="median", copy=True)),
-    ('std_scaler', StandardScaler(with_mean=True, with_std=True, copy=True))])   
+avg_rmse_kfoldpoly = mean(rmse_scores_kfoldpoly.round(decimals=1))
+compare_rmse(avg_rmse_kfoldgrd,avg_rmse_kfoldrandom,avg_rmse_kfoldpoly,"Sau khi KFold")
+compare_rmse(rmse_grabt_final,rmse_final_random,rmse_poly_final,"Final Model")
 
-full_pipeline = FeatureUnion(transformer_list=[
-    ("num_pipeline", num_pipeline)])
-ok = full_pipeline.fit_transform(processed_train_set_val_most_importance)
-processed_train_set_val_most_importance.shape
-final_model_grabt.fit(processed_train_set_val_most_importance,y_train)
-tree.export_graphviz(single_tree, 
-                     out_file = './images/tree.dot',
-                     rounded = True, 
-                     feature_names = most_important_features,
-                     filled = True)
-nmse_scores_test = cross_val_score(final_model_grabt, processed_train_set_val, y_train, cv=cv, scoring='neg_mean_squared_error')
-rmse_scores_test = np.sqrt(-nmse_scores_test)
-print("GradientBoostingRegressor rmse: ", rmse_scores_test.round(decimals=1))
-print("Avg. rmse: ", mean(rmse_scores_test.round(decimals=1)),'\n')
+#%%
+#Best Model
+r2score, rmse = r2score_and_rmse(final_model_grabt, processed_test_set_val, y_valid)
+print('\nPerformance on test data:')
+print('R2 score (on test data, best=1):', r2score)
+print("Root Mean Square Error: ", rmse.round(decimals=1))
+# 7.3.2 Predict labels for some test instances
+print("\nTest data: \n", y_valid.iloc[0:9])
+print("\nPredictions: ", final_model_grabt.predict(processed_test_set_val[0:9]).round(decimals=1))
+print("Labels:      ", list(y_valid[0:9]),'\n')
+# %%
+# most_important_features = feature_results['feature'][:5]
+# single_tree = final_model_grabt.estimators_[105][0]
+# processed_train_set_val_most_importance = x_train[most_important_features]
+# processed_train_set_val_most_importance.isna().sum()
+# processed_train_set_val_most_importance.fillna(0,inplace=True)
+# num_pipeline = Pipeline([
+#     ('selector', ColumnSelector(processed_train_set_val_most_importance)),
+#     ('imputer', SimpleImputer(missing_values=np.nan, strategy="median", copy=True)),
+#     ('std_scaler', StandardScaler(with_mean=True, with_std=True, copy=True))])   
+
+# full_pipeline = FeatureUnion(transformer_list=[
+#     ("num_pipeline", num_pipeline)])
+# ok = full_pipeline.fit_transform(processed_train_set_val_most_importance)
+# processed_train_set_val_most_importance.shape
+# final_model_grabt.fit(processed_train_set_val_most_importance,y_train)
+# tree.export_graphviz(single_tree, 
+#                      out_file = './images/tree.dot',
+#                      rounded = True, 
+#                      feature_names = most_important_features,
+#                      filled = True)
+# nmse_scores_test = cross_val_score(final_model_grabt, processed_train_set_val, y_train, cv=cv, scoring='neg_mean_squared_error')
+# rmse_scores_test = np.sqrt(-nmse_scores_test)
+# print("GradientBoostingRegressor rmse: ", rmse_scores_test.round(decimals=1))
+# print("Avg. rmse: ", mean(rmse_scores_test.round(decimals=1)),'\n')
 
 # %%
