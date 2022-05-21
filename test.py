@@ -16,24 +16,64 @@ from statistics import mean
 from sklearn.model_selection import GridSearchCV
 import seaborn as sns
 data = pd.read_csv('./train-data.csv')
+data.describe()
+data.info()
+data.head()
+data.shape
+def processed_data_Mileage(data):
+    kmkg = 0
+    kmpl = 0
+    for i in data.Mileage:
+        if str(i).endswith("km/kg"):
+            kmkg+=1
+        elif str(i).endswith("kmpl"):
+            kmpl+=1
+    print('The number of rows with Km/Kg : {} '.format(kmkg))
+    print('The number of rows with Km/Kg : {} '.format(kmpl))
+    Correct_Mileage= []
+    bool_series_null = pd.isnull(data["Mileage"])
+    bool_series_notnull=pd.notnull(data["Mileage"])
+    data_null=data[bool_series_null]
+    data=data[bool_series_notnull]
+    for i in data.Mileage:
+        if str(i).endswith('km/kg'):
+            i = i[:-6]
+            i = float(i)*1.40
+            Correct_Mileage.append(float(i))
+        elif str(i).endswith('kmpl'):
+            i = i[:-6]
+            #print(i)
+            Correct_Mileage.append(float(i))
+    data['Mileage']=Correct_Mileage
+    data=data.append(data_null)
+    return data
+data = processed_data_Mileage(data)
 #%%
 #==================Xem % missing data trong mỗi cột ===========================
-for col in data.columns:
-    missing_data=data[col].isna().sum()
-    missing_persent=missing_data/len(data)*100
-    print(f"Column: {col} has {missing_persent}%")
-
+def missing_values_table(df):
+        mis_val = df.isnull().sum()
+        mis_val_percent = 100 * df.isnull().sum() / len(df)
+        mis_val_table = pd.concat([mis_val, mis_val_percent], axis=1)
+        mis_val_table_ren_columns = mis_val_table.rename(
+        columns = {0 : 'Missing Values', 1 : '% of Total Values'})
+        mis_val_table_ren_columns = mis_val_table_ren_columns[
+            mis_val_table_ren_columns.iloc[:,1] != 0].sort_values(
+        '% of Total Values', ascending=False).round(1)
+        print ("Số lượng " + str(df.shape[1]) + " columns.\n"      
+            "Có tất cả " + str(mis_val_table_ren_columns.shape[0]) +
+              " columns bị missing values.")
+        return mis_val_table_ren_columns
+missing_values_table(data)
 #==================Loại bỏ các cột không cần thiết=============================
 data = data.drop(columns=["CarId","Name","New_Price"])
 data.info()
-categories_cols = data.select_dtypes(include=['object']).columns
-
 #================== Ép kiểu dữ liệu ===============================
 data['Engine']=data["Engine"].str.replace(' CC','')
 data['Power']=data["Power"].str.replace(' bhp','')
 data.head()
 data['Engine']=data["Engine"].astype(np.float).astype("float64")
 data['Power']=data['Power'].astype(np.float).astype("float64")
+data['Mileage']=data['Mileage'].astype(np.float).astype("float64")
 data.info()
 #================== Tách dữ liệu ra thành tập train và tập test========================
 x, y = train_test_split(data, test_size=0.2, random_state=42)
@@ -82,9 +122,13 @@ print(processed_train_set_val[[0, 1, 2],:].toarray())
 print(processed_train_set_val.shape)
 print('We have %d numeric feature + 1 added features + 35 cols of onehotvector for categorical features.' %(len(features_numbers)))
 #==================================Price===================================
-plt.figure(figsize=(5,5))
-sns.distplot(data["Price"],kde=True)
+plt.style.use('fivethirtyeight')
+plt.hist(data['Price'].dropna(),bins = 100,edgecolor = 'k')
+plt.title('Price')
 plt.show()
+# plt.figure(figsize=(5,5))
+# sns.distplot(data["Price"],kde=True)
+
 #==================================Fuel_Type===================================
 plt.figure(figsize=(7,7))
 data['Fuel_Type'].value_counts().plot(kind='bar')
@@ -93,11 +137,6 @@ plt.show()
 plt.figure(figsize=(7,7))
 data['Owner_Type'].value_counts().plot(kind='bar')
 plt.show()
-#=================================Draw=====================================
-for i in categories_cols:
-    if i!='Name':
-        sns.boxplot(x=i,y='Price',data=data,palette='Pastel2')
-        plt.show()
 #================================Price & Year=============================
 year,price = data["Year"],data["Price"]
 plt.scatter(year,price)
