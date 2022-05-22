@@ -17,11 +17,12 @@ from sklearn.model_selection import GridSearchCV
 import seaborn as sns
 from sklearn.preprocessing import PolynomialFeatures
 
+import pandas as pd
 data = pd.read_csv('./train-data.csv')
+data.head(5)
+data.shape
 data.describe()
 data.info()
-data.head()
-data.shape
 def processed_data_Mileage(data):
     kmkg = 0
     kmpl = 0
@@ -31,7 +32,7 @@ def processed_data_Mileage(data):
         elif str(i).endswith("kmpl"):
             kmpl+=1
     print('The number of rows with Km/Kg : {} '.format(kmkg))
-    print('The number of rows with Km/Kg : {} '.format(kmpl))
+    print('The number of rows with kmpl : {} '.format(kmpl))
     Correct_Mileage= []
     bool_series_null = pd.isnull(data["Mileage"])
     bool_series_notnull=pd.notnull(data["Mileage"])
@@ -51,7 +52,7 @@ def processed_data_Mileage(data):
     return data
 data = processed_data_Mileage(data)
 #%%
-#==================Xem % missing data trong mỗi cột ===========================
+#==================Xem % missing data và số lượng ô bị missing trong mỗi cột ===========================
 def missing_values_table(df):
         mis_val = df.isnull().sum()
         mis_val_percent = 100 * df.isnull().sum() / len(df)
@@ -148,23 +149,21 @@ plt.ylabel('Price')
 plt.show()
 #================================Nguyen====================================
 # sns.set_theme()
-sns.histplot(data=data["Price"])
-plt.show()
+#%%
+sns.set_theme()
 
-sns.barplot(data=data,x="Owner_Type",y="Price")
-plt.xticks(rotation='vertical')
-plt.show()
-
-sns.barplot(data=data,x="Transmission",y="Price")
-plt.xticks(rotation='vertical')
-plt.show()
-
-sns.barplot(data=data,x="Fuel_Type",y="Price")
-plt.xticks(rotation='vertical')
-plt.show()
-
+#Tong Quan dữ liệu
+sns.pairplot(data)
+#Đọ tương quan của dữ liệu 
 sns.barplot(data=data,x="Price",y="Location")
-plt.show()
+sns.barplot(data=data,x="Price",y="Fuel_Type")
+sns.barplot(data=data,x="Price",y="Transmission")
+sns.barplot(data=data,x="Price",y="Owner_Type")
+#Xem các outlier
+sns.boxplot(data=data,x="Price",y="Location")
+sns.boxplot(data=data,x="Price",y="Fuel_Type")
+sns.boxplot(data=data,x="Price",y="Transmission")
+sns.boxplot(data=data,x="Price",y="Owner_Type")
 #%%
 #=============================K-fold cross validation=============================================================================
 print('\n____________ K-fold cross validation ____________')
@@ -265,7 +264,7 @@ def fine_turn_gradient():
                                 n_jobs = -1, 
                            return_train_score = True)
         grid_search_gradient_model.fit(processed_train_set_val, y_train)
-        joblib.dump(random_cv,'models/GradientBoostingRegressor_GridSearchCV.pkl')
+        joblib.dump(grid_search_gradient_model,'models/GradientBoostingRegressor_GridSearchCV.pkl')
     else:
         grid_search_gradient_model = joblib.load('models/GradientBoostingRegressor_GridSearchCV.pkl')
     return grid_search_gradient_model
@@ -286,7 +285,7 @@ print("\n____________ Final Model GradientBoostingRegressor ____________")
 grid_search_gradient_model = fine_turn_gradient()
 final_model_grabt = grid_search_gradient_model.best_estimator_
 final_model_grabt.fit(processed_train_set_val, y_train)
-final_pred = final_model_grabt.predict(processed_test_set_val)
+final_pred = final_model_grabt.predict(processed_train_set_val)
 print(final_pred[0:9])
 print(final_model_grabt.score(processed_test_set_val,y_valid))
 accuracy_train_grabt_t, rmse_grabt_final = r2score_and_rmse(final_model_grabt, processed_train_set_val, y_train)
@@ -294,7 +293,7 @@ print("Score: ", accuracy_train_grabt_t.round(decimals=1))
 print("RMSE",rmse_grabt_final)
 sns.kdeplot(final_pred, label = 'Predictions')
 sns.kdeplot(y_valid, label = 'Values')
-plt.xlabel('Energy Star Score'); 
+plt.xlabel('Energy Star Score')
 plt.ylabel('Density')
 plt.title('Test Values and Predictions')
 # print('Default model performance on the test set: MAE = %0.4f.' % mae(y_valid, default_pred))
@@ -325,8 +324,7 @@ print("Avg. rmse: ", mean(rmse_scores_train_kfoldrandom.round(decimals=1)),'\n')
 
 #%% 
 #Fine-turn tìm ra hyperparameter định hình nên model ( phải đưa dô trc khi training )
-from sklearn.model_selection import GridSearchCV
-cv = KFold(n_splits=5,shuffle=True,random_state=37) # cv data generator
+cv = KFold(n_splits=10,shuffle=True,random_state=37) # cv data generator
 def fine_turn_random():
     kt=False
     if kt:
@@ -337,10 +335,10 @@ def fine_turn_random():
         grid_search_random_model = GridSearchCV(model_random, param_grid, cv=cv, scoring='neg_mean_squared_error', return_train_score=True, 
         refit=True)
         grid_search_random_model.fit(processed_train_set_val, y_train)
-        joblib.dump(random_cv,'models/RandomForestRegressor_GridSearchCV.pkl') 
+        joblib.dump(grid_search_random_model,'models/RandomForestRegressor_GridSearchCV.pkl') 
         print_search_result(grid_search_random_model, model_name = "RandomForestRegressor")
     else:
-        grid_search_random_model = joblib.load('models/GradientBoostingRegressor_RandomizedSearchCV.pkl')
+        grid_search_random_model = joblib.load('models/RandomForestRegressor_GridSearchCV.pkl')
     return grid_search_random_model
 
 #%%
@@ -543,13 +541,13 @@ compare_rmse(rmse_grabt_final,rmse_final_random,rmse_poly_final,"Final Model")
 
 #%%
 #Best Model
-r2score, rmse = r2score_and_rmse(final_model_grabt, processed_test_set_val, y_valid)
+r2score, rmse = r2score_and_rmse(final_model_random, processed_test_set_val, y_valid)
 print('\nPerformance on test data:')
 print('R2 score (on test data, best=1):', r2score)
 print("Root Mean Square Error: ", rmse.round(decimals=1))
 # 7.3.2 Predict labels for some test instances
 print("\nTest data: \n", y_valid.iloc[0:9])
-print("\nPredictions: ", final_model_grabt.predict(processed_test_set_val[0:9]).round(decimals=1))
+print("\nPredictions: ", final_model_random.predict(processed_test_set_val[0:9]).round(decimals=1))
 print("Labels:      ", list(y_valid[0:9]),'\n')
 # %%
 # most_important_features = feature_results['feature'][:5]
